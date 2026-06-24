@@ -88,7 +88,7 @@ uploadDirs.forEach(dir => {
 
 const io = socketIo(server, {
   cors: {
-    origin: process.env.CLIENT_URL || 'http://localhost:3000',
+    origin: process.env.CLIENT_URL || 'https://fraudtrace-zbtc.onrender.com',
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     credentials: true,
   },
