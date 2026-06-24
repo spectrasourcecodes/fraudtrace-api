@@ -121,10 +121,7 @@ app.use(helmet({
 
 // CORS
 app.use(cors({
-  origin: [
-    process.env.CLIENT_URL || 'https://fraudtrace-api.onrender.com',
-    'https://fraudtrace-api.onrender.com' || process.env.CLIENT_URL,
-  ],
+  origin: process.env.CLIENT_URL || 'https://fraudtrace-zbtc.onrender.com',
   credentials: true,
 }));
 
