@@ -27,12 +27,7 @@ dotenv.config();
 // ENVIRONMENT VARIABLE VALIDATION
 // ============================================
 
-// Verify required environment variables (Cloudinary is optional now)
-const requiredEnvVars = [
-  'MONGODB_URI',
-  'JWT_SECRET',
-];
-
+const requiredEnvVars = ['MONGODB_URI', 'JWT_SECRET'];
 const missingEnvVars = requiredEnvVars.filter(varName => !process.env[varName]);
 if (missingEnvVars.length > 0) {
   console.error('❌ Missing required environment variables:', missingEnvVars.join(', '));
@@ -46,7 +41,6 @@ const missingCloudinary = cloudinaryVars.filter(varName => !process.env[varName]
 if (missingCloudinary.length > 0) {
   console.warn('⚠️  Cloudinary not fully configured. File uploads will use local storage.');
   console.warn('   Missing:', missingCloudinary.join(', '));
-  console.warn('   To enable Cloudinary, add these to your .env file.');
 } else {
   console.log('✅ Cloudinary configured');
 }
@@ -55,11 +49,9 @@ if (missingCloudinary.length > 0) {
 // INITIALIZE CONFIGURATIONS
 // ============================================
 
-// Initialize Cloudinary config (if available)
 const { configureCloudinary } = require('./config/cloudinary');
 configureCloudinary();
 
-// Create Express app and HTTP server
 const app = express();
 const server = http.createServer(app);
 
@@ -67,13 +59,7 @@ const server = http.createServer(app);
 // ENSURE UPLOAD DIRECTORIES EXIST
 // ============================================
 
-const uploadDirs = [
-  'uploads',
-  'uploads/evidence',
-  'uploads/documents',
-  'uploads/images',
-];
-
+const uploadDirs = ['uploads', 'uploads/evidence', 'uploads/documents', 'uploads/images'];
 uploadDirs.forEach(dir => {
   const dirPath = path.join(__dirname, dir);
   if (!fs.existsSync(dirPath)) {
@@ -88,47 +74,55 @@ uploadDirs.forEach(dir => {
 
 const io = socketIo(server, {
   cors: {
-    origin: process.env.CLIENT_URL || 'https://fraudtrace-zbtc.onrender.com',
+    origin: [
+      'http://localhost:3000',
+      'http://localhost:4173',
+      'https://fraudtrace-zbtc.onrender.com',
+    ],
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     credentials: true,
   },
 });
 
-// Make io accessible to routes
 app.set('io', io);
 
 // ============================================
-// STORE RATE LIMITERS FOR ACCESS BY CONTROLLERS
+// STORE RATE LIMITERS
 // ============================================
 app.set('rateLimiters', {
-  generalLimiter,
-  authLimiter,
-  uploadLimiter,
-  reportLimiter,
-  passwordResetLimiter,
-  notificationLimiter,
-  apiLimiter,
+  generalLimiter, authLimiter, uploadLimiter,
+  reportLimiter, passwordResetLimiter, notificationLimiter, apiLimiter,
 });
 
 // ============================================
-// MIDDLEWARE SETUP
+// MIDDLEWARE SETUP (ORDER MATTERS!)
 // ============================================
 
-// Security headers
-app.use(helmet({
-  crossOriginResourcePolicy: { policy: 'cross-origin' }, // Allow cross-origin for file serving
-}));
-
-// CORS
+// 1. CORS - MUST be before other middleware
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'https://fraudtrace-zbtc.onrender.com',
+  origin: [
+    'http://localhost:3000',
+    'http://localhost:4173',
+    'http://127.0.0.1:3000',
+    'http://127.0.0.1:4173',
+    'https://fraudtrace-zbtc.onrender.com',
+  ],
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
 }));
 
-// Logging
+// 2. Helmet - but allow cross-origin
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
+  contentSecurityPolicy: false, // Disable CSP to avoid blocking API calls
+}));
+
+// 3. Logging
 app.use(morgan('dev'));
 
-// Body parsing
+// 4. Body parsing
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
@@ -139,7 +133,7 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 // Apply general rate limiter to ALL routes
 app.use(generalLimiter);
 
-// Serve uploaded files statically (before API routes to avoid rate limiting on static files)
+// Serve uploaded files statically
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // ============================================
@@ -157,32 +151,17 @@ mongoose.connect(process.env.MONGODB_URI)
 // API ROUTES
 // ============================================
 
-// Auth routes with stricter rate limiting
 app.use('/api/auth', authLimiter, require('./routes/authRoutes'));
-
-// User routes
 app.use('/api/users', require('./routes/userRoutes'));
-
-// Case routes with report limiting for POST
 app.use('/api/cases', require('./routes/caseRoutes'));
-
-// Evidence routes with upload limiting
 app.use('/api/evidence', uploadLimiter, require('./routes/evidenceRoutes'));
-
-// Notification routes with notification limiting
 app.use('/api/notifications', notificationLimiter, require('./routes/notificationRoutes'));
-
-// Admin routes
 app.use('/api/admin', require('./routes/adminRoutes'));
-
-// Support routes
 app.use('/api/support', require('./routes/supportRoutes'));
-
-// Threat intelligence routes
 app.use('/api/threat-intel', require('./routes/threatIntelRoutes'));
 
 // ============================================
-// HEALTH CHECK ENDPOINT
+// HEALTH CHECK
 // ============================================
 
 app.get('/health', (req, res) => {
@@ -215,30 +194,13 @@ app.use('/api/*', (req, res) => {
 
 io.on('connection', (socket) => {
   console.log('🔌 New client connected:', socket.id);
-  
   socket.on('join', (userId) => {
-    if (userId) {
-      socket.join(`user_${userId}`);
-      console.log(`👤 User ${userId} joined their room`);
-    }
+    if (userId) { socket.join(`user_${userId}`); console.log(`👤 User ${userId} joined`); }
   });
-
   socket.on('join_case', (caseId) => {
-    if (caseId) {
-      socket.join(`case_${caseId}`);
-      console.log(`📋 Joined case room: ${caseId}`);
-    }
+    if (caseId) { socket.join(`case_${caseId}`); console.log(`📋 Joined case: ${caseId}`); }
   });
-
-  socket.on('leave_case', (caseId) => {
-    if (caseId) {
-      socket.leave(`case_${caseId}`);
-    }
-  });
-
-  socket.on('disconnect', () => {
-    console.log('🔌 Client disconnected:', socket.id);
-  });
+  socket.on('disconnect', () => console.log('🔌 Client disconnected:', socket.id));
 });
 
 // ============================================
@@ -247,64 +209,29 @@ io.on('connection', (socket) => {
 
 app.use((err, req, res, next) => {
   console.error('❌ Error:', err.message);
-  
-  // Log stack trace in development
-  if (process.env.NODE_ENV === 'development') {
-    console.error(err.stack);
-  }
+  if (process.env.NODE_ENV === 'development') console.error(err.stack);
 
-  // Mongoose Validation Error
   if (err.name === 'ValidationError') {
     const messages = Object.values(err.errors).map(e => e.message);
-    return res.status(400).json({
-      success: false,
-      message: 'Validation Error',
-      errors: messages,
-    });
+    return res.status(400).json({ success: false, message: 'Validation Error', errors: messages });
   }
-
-  // Mongoose Cast Error (Invalid ObjectId)
   if (err.name === 'CastError') {
-    return res.status(400).json({
-      success: false,
-      message: `Invalid ${err.path}: ${err.value}`,
-    });
+    return res.status(400).json({ success: false, message: `Invalid ${err.path}: ${err.value}` });
   }
-
-  // Mongoose Duplicate Key Error
   if (err.code === 11000) {
     const field = Object.keys(err.keyValue)[0];
-    return res.status(400).json({
-      success: false,
-      message: `Duplicate value for '${field}'. Please use another value.`,
-    });
+    return res.status(400).json({ success: false, message: `Duplicate value for '${field}'` });
   }
-
-  // JWT Errors
   if (err.name === 'JsonWebTokenError') {
-    return res.status(401).json({
-      success: false,
-      message: 'Invalid token. Please login again.',
-    });
+    return res.status(401).json({ success: false, message: 'Invalid token. Please login again.' });
   }
-
   if (err.name === 'TokenExpiredError') {
-    return res.status(401).json({
-      success: false,
-      message: 'Token expired. Please login again.',
-    });
+    return res.status(401).json({ success: false, message: 'Token expired. Please login again.' });
   }
-
-  // Multer File Upload Errors
   if (err.name === 'MulterError') {
-    return res.status(400).json({
-      success: false,
-      message: `Upload error: ${err.message}`,
-      code: err.code,
-    });
+    return res.status(400).json({ success: false, message: `Upload error: ${err.message}`, code: err.code });
   }
 
-  // Default error
   const statusCode = err.statusCode || 500;
   res.status(statusCode).json({
     success: false,
@@ -328,10 +255,6 @@ server.listen(PORT, () => {
   console.log(`❤️  Health: http://localhost:${PORT}/health`);
   console.log(`💾 Storage: ${process.env.CLOUDINARY_CLOUD_NAME ? 'Cloudinary' : 'Local'}`);
   console.log(`🛡️  Rate Limiting: Enabled`);
-  console.log(`   • General: 100 req / 5 min`);
-  console.log(`   • Auth: 10 req / 15 min`);
-  console.log(`   • Upload: 30 req / 15 min`);
-  console.log(`   • Notification: 30 req / 30 sec`);
   console.log('═══════════════════════════════════');
   console.log('');
 });
@@ -341,20 +264,11 @@ server.listen(PORT, () => {
 // ============================================
 
 const gracefulShutdown = async (signal) => {
-  console.log(`\n${signal} received. Shutting down gracefully...`);
-
+  console.log(`\n${signal} received. Shutting down...`);
   try {
-    await new Promise((resolve) => {
-      server.close(() => {
-        console.log('HTTP server closed.');
-        resolve();
-      });
-    });
-
+    await new Promise((resolve) => server.close(() => resolve()));
     await mongoose.connection.close();
-
-    console.log('MongoDB connection closed.');
-
+    console.log('Shutdown complete.');
     process.exit(0);
   } catch (error) {
     console.error('Shutdown error:', error);
@@ -362,23 +276,18 @@ const gracefulShutdown = async (signal) => {
   }
 };
 
-// Handle termination signals
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
-// Handle unhandled promise rejections
 process.on('unhandledRejection', (err) => {
   console.error('❌ Unhandled Promise Rejection:', err.message);
   console.error(err.stack);
 });
 
-// Handle uncaught exceptions
 process.on('uncaughtException', (err) => {
   console.error('❌ Uncaught Exception:', err.message);
   console.error(err.stack);
-  server.close(() => {
-    process.exit(1);
-  });
+  server.close(() => process.exit(1));
 });
 
 module.exports = app;
