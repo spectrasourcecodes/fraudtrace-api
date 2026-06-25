@@ -4,24 +4,24 @@ const connectDB = async () => {
   try {
     const conn = await mongoose.connect(process.env.MONGODB_URI);
 
-    console.log(`MongoDB Connected: ${conn.connection.host}`.cyan.underline.bold);
-    console.log(`Database: ${conn.connection.name}`.green);
+    console.log(`MongoDB Connected: ${conn.connection.host}`);
+    console.log(`Database: ${conn.connection.name}`);
 
     mongoose.connection.on('error', (err) => {
-      console.error(`MongoDB connection error: ${err.message}`.red);
+      console.error(`MongoDB connection error: ${err.message}`);
     });
 
     mongoose.connection.on('disconnected', () => {
-      console.log('MongoDB disconnected'.yellow);
+      console.log('MongoDB disconnected');
     });
 
     mongoose.connection.on('reconnected', () => {
-      console.log('MongoDB reconnected'.green);
+      console.log('MongoDB reconnected');
     });
 
     return conn;
   } catch (error) {
-    console.error(`MongoDB Connection Error: ${error.message}`.red.underline.bold);
+    console.error(`MongoDB Connection Error: ${error.message}`);
     process.exit(1);
   }
 };
