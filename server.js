@@ -82,7 +82,7 @@ uploadDirs.forEach(dir => {
 // ============================================
 const io = socketIo(server, {
   cors: {
-    origin: process.env.CLIENT_URL || 'https://fraudtrace-zbtc.onrender.com',
+    origin: 'https://fraudtrace-zbtc.onrender.com' || process.env.CLIENT_URL,
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     credentials: true,
   },
@@ -106,15 +106,16 @@ app.set('rateLimiters', {
 // MIDDLEWARE SETUP
 // ============================================
 
-// Security headers
-app.use(helmet({
-  crossOriginResourcePolicy: { policy: 'cross-origin' },
-}));
 
 // CORS
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'https://fraudtrace-zbtc.onrender.com',
+  origin: 'https://fraudtrace-zbtc.onrender.com' || process.env.CLIENT_URL,
   credentials: true,
+}));
+
+// Security headers
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
 }));
 
 // Logging
