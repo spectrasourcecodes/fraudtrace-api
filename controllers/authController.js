@@ -26,6 +26,7 @@ exports.register = async (req, res) => {
 
     // Check if user exists
     const existingUser = await User.findOne({ email });
+
     if (existingUser) {
       return res.status(400).json({
         success: false,
@@ -46,26 +47,10 @@ exports.register = async (req, res) => {
       verificationToken
     });
 
-    // Send verification email
-    const verificationUrl = `${process.env.CLIENT_URL}/verify-email/${verificationToken}`;
-    
-    try {
-      await sendEmail({
-        email: user.email,
-        subject: 'Verify Your Email - Fraud Trace Recovery',
-        html: `
-          <h1>Welcome to Fraud Trace Recovery</h1>
-          <p>Please verify your email by clicking the link below:</p>
-          <a href="${verificationUrl}">Verify Email</a>
-        `
-      });
-    } catch (emailError) {
-      console.error('Email sending failed:', emailError);
-    }
-
-    // Generate token
+    // Generate JWT immediately
     const token = generateToken(user._id);
 
+    // Respond immediately (fast)
     res.status(201).json({
       success: true,
       token,
@@ -78,7 +63,35 @@ exports.register = async (req, res) => {
         preferredLanguage: user.preferredLanguage
       }
     });
+
+    // Send email AFTER response
+    setImmediate(async () => {
+      try {
+        const verificationUrl =
+          `${process.env.CLIENT_URL}/verify-email/${verificationToken}`;
+
+        await sendEmail({
+          email: user.email,
+          subject: 'Verify Your Email - Fraud Trace Recovery',
+          html: `
+            <h1>Welcome to Fraud Trace Recovery</h1>
+            <p>Please verify your email by clicking the link below:</p>
+            <a href="${verificationUrl}">Verify Email</a>
+          `
+        });
+
+        console.log(`✅ Verification email sent to ${user.email}`);
+      } catch (emailError) {
+        console.error(
+          `❌ Verification email failed for ${user.email}:`,
+          emailError.message
+        );
+      }
+    });
+
   } catch (error) {
+    console.error('Register error:', error);
+
     res.status(500).json({
       success: false,
       message: 'Server error',
