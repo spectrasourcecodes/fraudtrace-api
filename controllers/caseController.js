@@ -1,6 +1,7 @@
 const Case = require('../models/Case');
 const Notification = require('../models/Notification');
 const User = require('../models/User');
+const Evidence = require('../models/Evidence');
 const mongoose = require('mongoose');
 
 // @desc    Create new case
@@ -593,7 +594,6 @@ exports.deleteCase = async (req, res) => {
     // ============================================
     // DELETE RELATED EVIDENCE
     // ============================================
-    const Evidence = require('../models/Evidence');
     
     // Find all evidence for this case
     const evidenceList = await Evidence.find({ caseId: caseData._id });

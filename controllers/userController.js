@@ -1,5 +1,7 @@
 const User = require('../models/User');
 const Case = require('../models/Case');
+const Evidence = require('../models/Evidence');
+const Notification = require('../models/Notification');
 
 // @desc    Get all users (admin only)
 // @route   GET /api/users
@@ -163,13 +165,90 @@ exports.deleteUser = async (req, res) => {
       });
     }
 
+    // ============================================
+    // DELETE ALL RELATED RECORDS
+    // ============================================
+
+    // Find all cases belonging to this user
+    const userCases = await Case.find({ user: user._id });
+    const caseIds = userCases.map(c => c._id);
+    
+    console.log(`Deleting ${userCases.length} case(s) for user ${user.name}`);
+
+    // Delete evidence for all user's cases
+    if (caseIds.length > 0) {
+      const evidenceList = await Evidence.find({ caseId: { $in: caseIds } });
+      console.log(`Deleting ${evidenceList.length} evidence file(s)`);
+
+      // Delete evidence files from storage (Cloudinary or local)
+      const { deleteFromCloudinary, isCloudinaryAvailable } = require('../middleware/upload');
+      const fs = require('fs');
+      const path = require('path');
+
+      for (const evidence of evidenceList) {
+        try {
+          if (evidence.metadata?.storage === 'cloudinary' && evidence.publicId && isCloudinaryAvailable()) {
+            await deleteFromCloudinary(evidence.publicId);
+          }
+          if (evidence.metadata?.storage === 'local' && evidence.publicId) {
+            const filePath = path.join(__dirname, '..', 'uploads', 'evidence', evidence.publicId);
+            if (fs.existsSync(filePath)) {
+              fs.unlinkSync(filePath);
+            }
+          }
+        } catch (storageErr) {
+          console.warn(`⚠️ Failed to delete evidence from storage: ${storageErr.message}`);
+        }
+      }
+
+      // Delete all evidence records for user's cases
+      await Evidence.deleteMany({ caseId: { $in: caseIds } });
+    }
+
+    // Delete all cases belonging to this user
+    await Case.deleteMany({ user: user._id });
+    console.log(`🗃️ Deleted ${userCases.length} case(s)`);
+
+    // Delete all notifications for this user
+    const userNotifications = await Notification.deleteMany({ user: user._id });
+    console.log(`🔔 Deleted ${userNotifications.deletedCount} notification(s)`);
+
+    // Delete notifications where this user is the recipient
+    await Notification.deleteMany({ user: user._id });
+
+    // If user is an investigator, unassign them from all cases
+    if (user.role === 'investigator' || user.role === 'admin') {
+      await Case.updateMany(
+        { assignedInvestigator: user._id },
+        { $unset: { assignedInvestigator: '' } }
+      );
+      console.log('👤 Unassigned from all cases');
+    }
+
+    // ============================================
+    // DELETE THE USER
+    // ============================================
     await User.findByIdAndDelete(req.params.id);
+    console.log(`✅ User ${user.name} deleted successfully`);
+
+    // Emit socket event if available
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('user_deleted', { userId: req.params.id });
+    }
 
     res.status(200).json({
       success: true,
-      message: 'User deleted successfully'
+      message: 'User and all related records deleted successfully',
+      data: {
+        userDeleted: true,
+        casesDeleted: userCases.length,
+        evidenceDeleted: evidenceList?.length || 0,
+        notificationsDeleted: userNotifications?.deletedCount || 0
+      }
     });
   } catch (error) {
+    console.error('Delete user error:', error);
     res.status(500).json({
       success: false,
       message: 'Server error',
