@@ -555,3 +555,74 @@ exports.updateCaseStatus = async (req, res) => {
     });
   }
 };
+
+
+// @desc    Delete case
+// @route   DELETE /api/cases/:id
+exports.deleteCase = async (req, res) => {
+  try {
+    const caseData = await Case.findById(req.params.id);
+
+    if (!caseData) {
+      return res.status(404).json({
+        success: false,
+        message: 'Case not found'
+      });
+    }
+
+    // Check authorization
+    // Only admin can delete any case
+    // Users can only delete their own cases if still in 'submitted' status
+    if (req.user.role === 'user') {
+      if (caseData.user.toString() !== req.user.id) {
+        return res.status(403).json({
+          success: false,
+          message: 'Not authorized to delete this case'
+        });
+      }
+
+      // Users can only delete cases that are still in 'submitted' status
+      if (caseData.status !== 'submitted') {
+        return res.status(400).json({
+          success: false,
+          message: 'Cases under investigation cannot be deleted. Please contact support.'
+        });
+      }
+    }
+
+    // Delete related notifications
+    await Notification.deleteMany({ relatedCase: caseData._id });
+
+    // Delete the case
+    await Case.findByIdAndDelete(req.params.id);
+
+    // Notify investigators if case was assigned
+    if (caseData.assignedInvestigator) {
+      await Notification.create({
+        user: caseData.assignedInvestigator,
+        title: 'Case Deleted',
+        message: `Case "${caseData.title}" (${caseData.caseId}) has been deleted.`,
+        type: 'case_update',
+        priority: 'normal'
+      });
+    }
+
+    // Emit socket event if available
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('case_deleted', { caseId: req.params.id });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Case deleted successfully'
+    });
+  } catch (error) {
+    console.error('Delete case error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+};

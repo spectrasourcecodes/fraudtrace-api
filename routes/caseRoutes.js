@@ -8,7 +8,8 @@ const {
   getCaseStats,
   getUserStats,
   assignInvestigator,
-  updateCaseStatus
+  updateCaseStatus,
+  deleteCase,
 } = require('../controllers/caseController');
 const { protect, authorize } = require('../middleware/auth');
 const { validateCase, handleValidation } = require('../middleware/validator');
@@ -17,7 +18,8 @@ router.use(protect);
 
 router.route('/')
   .get(getCases)
-  .post(validateCase, handleValidation, createCase);
+  .post(validateCase, handleValidation, createCase)
+  .delete(deleteCase);
 
 // Stats routes
 router.get('/stats', getCaseStats);
@@ -31,6 +33,7 @@ router.put('/:id/status', updateCaseStatus);
 
 router.route('/:id')
   .get(getCase)
-  .put(updateCase);
+  .put(updateCase)
+  .delete(deleteCase);
 
 module.exports = router;
