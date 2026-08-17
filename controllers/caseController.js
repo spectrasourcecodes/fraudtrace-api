@@ -590,18 +590,71 @@ exports.deleteCase = async (req, res) => {
       }
     }
 
-    // Delete related notifications
-    await Notification.deleteMany({ relatedCase: caseData._id });
+    // ============================================
+    // DELETE RELATED EVIDENCE
+    // ============================================
+    const Evidence = require('../models/Evidence');
+    
+    // Find all evidence for this case
+    const evidenceList = await Evidence.find({ caseId: caseData._id });
+    
+    console.log(`Deleting ${evidenceList.length} evidence file(s) for case ${caseData.caseId}`);
 
-    // Delete the case
+    // Delete evidence files from storage (Cloudinary or local)
+    const { deleteFromCloudinary, isCloudinaryAvailable } = require('../middleware/upload');
+    const fs = require('fs');
+    const path = require('path');
+
+    for (const evidence of evidenceList) {
+      try {
+        // If stored in Cloudinary, delete from there
+        if (evidence.metadata?.storage === 'cloudinary' && evidence.publicId && isCloudinaryAvailable()) {
+          await deleteFromCloudinary(evidence.publicId);
+          console.log(`🗑️ Deleted from Cloudinary: ${evidence.publicId}`);
+        }
+        
+        // If stored locally, delete the file
+        if (evidence.metadata?.storage === 'local' && evidence.publicId) {
+          const filePath = path.join(__dirname, '..', 'uploads', 'evidence', evidence.publicId);
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+            console.log(`🗑️ Deleted local file: ${evidence.publicId}`);
+          }
+        }
+      } catch (storageErr) {
+        console.warn(`⚠️ Failed to delete evidence file from storage: ${storageErr.message}`);
+        // Continue with database deletion even if storage deletion fails
+      }
+    }
+
+    // Delete all evidence records from database
+    await Evidence.deleteMany({ caseId: caseData._id });
+    console.log(`🗃️ Deleted ${evidenceList.length} evidence record(s) from database`);
+
+    // ============================================
+    // DELETE RELATED NOTIFICATIONS
+    // ============================================
+    await Notification.deleteMany({ relatedCase: caseData._id });
+    console.log('🔔 Deleted related notifications');
+
+    // ============================================
+    // DELETE RELATED CASE NOTES (if separate model)
+    // ============================================
+    // If you have a separate CaseNote model, delete those too:
+    // await CaseNote.deleteMany({ caseId: caseData._id });
+
+    // ============================================
+    // DELETE THE CASE
+    // ============================================
     await Case.findByIdAndDelete(req.params.id);
+    console.log(`✅ Case ${caseData.caseId} deleted successfully`);
 
     // Notify investigators if case was assigned
     if (caseData.assignedInvestigator) {
       await Notification.create({
         user: caseData.assignedInvestigator,
         title: 'Case Deleted',
-        message: `Case "${caseData.title}" (${caseData.caseId}) has been deleted.`,
+        message: `Case "${caseData.title}" (${caseData.caseId}) has been deleted along with ${evidenceList.length} evidence file(s).`,
         type: 'case_update',
         priority: 'normal'
       });
@@ -610,12 +663,21 @@ exports.deleteCase = async (req, res) => {
     // Emit socket event if available
     const io = req.app.get('io');
     if (io) {
-      io.emit('case_deleted', { caseId: req.params.id });
+      io.emit('case_deleted', { 
+        caseId: req.params.id,
+        caseIdStr: caseData.caseId,
+        evidenceDeleted: evidenceList.length 
+      });
     }
 
     res.status(200).json({
       success: true,
-      message: 'Case deleted successfully'
+      message: 'Case and all related evidence deleted successfully',
+      data: {
+        caseDeleted: true,
+        evidenceDeleted: evidenceList.length,
+        notificationsDeleted: true
+      }
     });
   } catch (error) {
     console.error('Delete case error:', error);
