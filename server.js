@@ -170,6 +170,7 @@ app.use('/api/notifications', notificationLimiter, require('./routes/notificatio
 app.use('/api/admin', require('./routes/adminRoutes'));
 app.use('/api/support', require('./routes/supportRoutes'));
 app.use('/api/threat-intel', require('./routes/threatIntelRoutes'));
+app.use('/api/wallet', require('./routes/walletRoutes'));
 
 // ============================================
 // HEALTH CHECK ENDPOINT
