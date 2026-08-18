@@ -111,7 +111,7 @@ exports.withdraw = async (req, res) => {
     await Notification.create({
       user: req.user.id,
       title: 'Withdrawal Processed',
-      message: `Your withdrawal of ${amount} ${wallet.currency} has been simulated. Remaining balance: ${wallet.balance.toFixed(2)} ${wallet.currency}.`,
+      message: `Your withdrawal of ${amount} ${wallet.currency} has been proccessed. Remaining balance: ${wallet.balance.toFixed(2)} ${wallet.currency}.`,
       type: 'system',
       priority: 'normal',
     });
@@ -127,7 +127,7 @@ exports.withdraw = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: 'Withdrawal simulated successfully.',
+      message: 'Withdrawal successfully.',
       data: {
         withdrawnAmount: amount,
         remainingBalance: wallet.balance,
